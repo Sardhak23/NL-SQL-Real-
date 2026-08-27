@@ -226,7 +226,7 @@ if query_to_execute:
         st.markdown(query_to_execute)
 
     # 2. Execute Query via Real LangChain Engine
-    result = engine.process_query(query_to_execute, dialect=selected_dialect)
+    result = engine.process_query(query_to_execute)
 
     # 3. Render Assistant Response
     with st.chat_message("assistant", avatar="🤖"):
