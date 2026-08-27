@@ -7,7 +7,6 @@ Zero external API keys or live database connections required.
 
 import streamlit as st
 import pandas as pd
-from mock_engine import MockNLtoSQLEngine, NLtoSQLResult
 from real_engine import RealNLtoSQLEngine
 from schema_data import SCHEMA_CATALOG, SAMPLE_QUERIES, SCHEMA_RELATIONSHIPS
 
@@ -70,12 +69,12 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "engine" not in st.session_state:
-    st.session_state.engine = MockNLtoSQLEngine()
+    st.session_state.engine = None
 
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
 
-engine: MockNLtoSQLEngine = st.session_state.engine
+engine = st.session_state.engine
 
 # -----------------------------------------------------------------------------
 # 3. Sidebar Controls & Schema Explorer
@@ -104,8 +103,8 @@ with st.sidebar:
             st.session_state.engine = RealNLtoSQLEngine(api_key=api_key)
             st.success("Real AI Engine Activated!")
         else:
-            st.warning("Please enter your API key to use real AI. Using mock engine for now.")
-            st.session_state.engine = MockNLtoSQLEngine()
+            st.warning("Please enter your API key to use the application.")
+            st.session_state.engine = None
         
 
 
@@ -155,7 +154,7 @@ st.markdown('<div class="main-header">💬 Enterprise Natural Language to SQL As
 st.markdown(
     '<div class="sub-header">'
     'Ask business questions in natural language. The assistant automatically generates SQL queries, '
-    'executes them against the mock database, and displays rich interactive tabular reports.'
+    'executes them against the live Chinook database, and displays rich interactive tabular reports.'
     '</div>',
     unsafe_allow_html=True
 )
@@ -217,7 +216,7 @@ for msg in st.session_state.messages:
 # -----------------------------------------------------------------------------
 # 7. Handle New User Input or Pending Quick Query
 # -----------------------------------------------------------------------------
-user_prompt = st.chat_input("Ask a business question (e.g., 'What were the top 10 products by revenue in 2025?')...")
+user_prompt = st.chat_input("Ask a business question (e.g., 'What were the top 10 products by revenue in 2025?')...", disabled=st.session_state.engine is None)
 query_to_execute = user_prompt or st.session_state.pop("pending_query", None)
 
 if query_to_execute:
@@ -226,26 +225,26 @@ if query_to_execute:
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(query_to_execute)
 
-    # 2. Execute Query Simulation via Mock Engine
-    result: NLtoSQLResult = engine.process_query(query_to_execute, dialect=selected_dialect)
+    # 2. Execute Query via Real LangChain Engine
+    result = engine.process_query(query_to_execute, dialect=selected_dialect)
 
     # 3. Render Assistant Response
     with st.chat_message("assistant", avatar="🤖"):
-        st.markdown(result.explanation)
+        st.markdown(result['explanation'])
         
         with st.expander("🔍 View Generated SQL Query", expanded=True):
-            st.code(result.sql_query, language="sql")
+            st.code(result['sql_query'], language="sql")
             
         st.markdown(
-            f'<div class="metadata-bar">⚡ <b>Execution Time:</b> {result.execution_time_ms}ms &nbsp;|&nbsp; '
-            f'📋 <b>Rows Returned:</b> {result.row_count} &nbsp;|&nbsp; '
-            f'🗄️ <b>Dialect:</b> {result.dialect}</div>',
+            f'<div class="metadata-bar">⚡ <b>Execution Time:</b> {result['execution_time_ms']}ms &nbsp;|&nbsp; '
+            f'📋 <b>Rows Returned:</b> {result['row_count']} &nbsp;|&nbsp; '
+            f'🗄️ <b>Dialect:</b> {result.get('dialect', 'SQLite')}</div>',
             unsafe_allow_html=True
         )
-        st.dataframe(result.dataframe, use_container_width=True, hide_index=True)
+        st.dataframe(result['dataframe'], use_container_width=True, hide_index=True)
 
         # Export CSV Button
-        csv_bytes = result.dataframe.to_csv(index=False).encode('utf-8')
+        csv_bytes = result['dataframe'].to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download Data as CSV",
             data=csv_bytes,
@@ -257,14 +256,14 @@ if query_to_execute:
     # 4. Append Assistant Response to Chat History
     st.session_state.messages.append({
         "role": "assistant",
-        "content": result.explanation,
-        "sql": result.sql_query,
-        "df": result.dataframe,
+        "content": result['explanation'],
+        "sql": result['sql_query'],
+        "df": result['dataframe'],
         "metrics": {
-            "execution_time_ms": result.execution_time_ms,
-            "row_count": result.row_count,
-            "dialect": result.dialect,
-            "intent": result.intent
+            "execution_time_ms": result['execution_time_ms'],
+            "row_count": result['row_count'],
+            "dialect": result.get('dialect', 'SQLite'),
+            "intent": result.get('intent', 'data_query')
         },
-        "suggested_followups": result.suggested_followups
+        "suggested_followups": result.get('suggested_followups', [])
     })
