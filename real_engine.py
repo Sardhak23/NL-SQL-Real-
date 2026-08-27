@@ -11,7 +11,7 @@ class RealNLtoSQLEngine:
         self.api_key = api_key
         self.db = SQLDatabase.from_uri(db_path)
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash", 
+            model="gemini-1.5-flash-latest", 
             google_api_key=self.api_key,
             temperature=0
         )
@@ -56,5 +56,5 @@ class RealNLtoSQLEngine:
                 "execution_time_ms": 0,
                 "row_count": 0,
                 "dialect": "SQLite",
-                "explanation": f"**Error:** Could not process query. Details: {str(e)}"
+                "explanation": f"**I could not process that request.** Either the question is outside the scope of my database, or there was a connection error."
             }
