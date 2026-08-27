@@ -86,16 +86,28 @@ with st.sidebar:
     st.caption("Convert plain English questions into optimized SQL queries and tabular business data.")
     
     st.markdown("---")
-    st.subheader("?? API Key")
-    api_key = st.text_input("Enter Google Gemini API Key:", type="password", help="Paste your free Gemini API key here")
-    if api_key:
-        st.session_state.engine = RealNLtoSQLEngine(api_key=api_key)
-        st.success("Real AI Engine Activated!")
-    else:
-        st.warning("Please enter your API key to use real AI. Using mock engine for now.")
-        st.session_state.engine = MockNLtoSQLEngine()
+    
+    # Check if API key is stored securely in Streamlit Secrets
+    secret_key = None
+    try:
+        secret_key = st.secrets.get("GEMINI_API_KEY")
+    except:
+        pass
         
-    st.markdown("---")
+    if secret_key:
+        st.success("API Key securely loaded from Secrets!")
+        st.session_state.engine = RealNLtoSQLEngine(api_key=secret_key)
+    else:
+        st.subheader("?? API Key")
+        api_key = st.text_input("Enter Google Gemini API Key:", type="password", help="Paste your free Gemini API key here")
+        if api_key:
+            st.session_state.engine = RealNLtoSQLEngine(api_key=api_key)
+            st.success("Real AI Engine Activated!")
+        else:
+            st.warning("Please enter your API key to use real AI. Using mock engine for now.")
+            st.session_state.engine = MockNLtoSQLEngine()
+        
+
 
     # Dialect Selection
     selected_dialect = st.selectbox(
