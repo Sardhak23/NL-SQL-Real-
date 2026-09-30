@@ -449,8 +449,152 @@ class GeminiProvider(BaseLLMProvider):
             return self.fallback.repair_sql(question, failed_sql, error_message, schema_context)
 
 
+# ==============================================================================
+# Gemma 3 4B Provider (via Hugging Face Serverless Inference API)
+# ==============================================================================
+
+class GemmaProvider(BaseLLMProvider):
+    """
+    Google Gemma 3 4B Instruction-Tuned Provider.
+    Calls the Hugging Face free Inference API — no GPU required on the server.
+    Model: google/gemma-3-4b-it
+    """
+
+    HF_API_BASE = "https://api-inference.huggingface.co/models"
+
+    def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
+        self.api_key = api_key or settings.huggingface_api_key
+        self.model_name = model_name or settings.gemma_model
+        self.fallback = DeterministicFallbackProvider()
+        self._headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        } if self.api_key else {}
+
+    @property
+    def provider_name(self) -> str:
+        return "Gemma-3-4B (HuggingFace)"
+
+    @property
+    def is_live_ai(self) -> bool:
+        return bool(self.api_key)
+
+    def _call_hf_api(self, prompt: str, max_new_tokens: int = 512) -> Optional[str]:
+        """Call HuggingFace Inference API and return generated text."""
+        try:
+            import urllib.request
+            import json as _json
+
+            url = f"{self.HF_API_BASE}/{self.model_name}/v1/chat/completions"
+            payload = _json.dumps({
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_new_tokens,
+                "temperature": settings.temperature,
+            }).encode("utf-8")
+
+            req = urllib.request.Request(
+                url, data=payload, headers=self._headers, method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = _json.loads(resp.read().decode("utf-8"))
+                return result["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.warning(f"HuggingFace Gemma API call failed: {e}")
+            return None
+
+    def generate_sql(
+        self,
+        question: str,
+        schema_context: str,
+        dialect: str = "sqlite",
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        if not self.api_key:
+            return self.fallback.generate_sql(question, schema_context, dialect, conversation_history)
+
+        prompt = (
+            "You are an expert SQLite Database Architect. Your task is to write a single, "
+            "high-performance, strictly read-only SQLite SQL query to answer the user's "
+            "business analytics question.\n\n"
+            "Rules:\n"
+            "1. Output ONLY the SQLite query enclosed in ```sql ... ``` fences.\n"
+            "2. Strictly read-only (SELECT, WITH, CTEs). Never mutate or alter data.\n"
+            "3. Use SQLite datetime functions (e.g. strftime('%Y-%m', col), date()).\n"
+            "4. Always round monetary aggregates to 2 decimal places using ROUND(..., 2).\n"
+            "5. Apply proper JOINs based on foreign key relationships.\n"
+            "6. IMPORTANT: If the question is NOT related to the database or business analytics "
+            "(e.g. general knowledge, geography, history), respond with ONLY: IRRELEVANT_QUESTION\n\n"
+            f"Database Schema:\n{schema_context}\n\n"
+        )
+
+        if conversation_history:
+            history_text = "\n".join(
+                f"User: {turn.get('question', '')}\nSQL: {turn.get('sql', '')}"
+                for turn in conversation_history[-3:]
+            )
+            prompt += f"Prior Conversation:\n{history_text}\n\n"
+
+        prompt += f"Question: {question}"
+
+        raw = self._call_hf_api(prompt)
+        if raw is None:
+            logger.warning("Gemma API returned None — falling back to deterministic engine.")
+            return self.fallback.generate_sql(question, schema_context, dialect, conversation_history)
+
+        if "IRRELEVANT_QUESTION" in raw:
+            return "IRRELEVANT_QUESTION"
+
+        match = re.search(r"```(?:sql)?\s*([\s\S]*?)\s*```", raw, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+        return raw.strip()
+
+    def repair_sql(
+        self,
+        question: str,
+        failed_sql: str,
+        error_message: str,
+        schema_context: str,
+    ) -> str:
+        if not self.api_key:
+            return self.fallback.repair_sql(question, failed_sql, error_message, schema_context)
+
+        prompt = (
+            "You are an expert SQLite Database Architect. The following query produced a "
+            "SQLite runtime error. Fix the query and return ONLY the corrected SQL "
+            "wrapped in ```sql ... ```.\n\n"
+            f"User Question: {question}\n"
+            f"Failed SQL:\n{failed_sql}\n"
+            f"SQLite Error: {error_message}\n\n"
+            f"Relevant Schema:\n{schema_context}\n"
+        )
+
+        raw = self._call_hf_api(prompt, max_new_tokens=400)
+        if raw is None:
+            return self.fallback.repair_sql(question, failed_sql, error_message, schema_context)
+
+        match = re.search(r"```(?:sql)?\s*([\s\S]*?)\s*```", raw, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+        return raw.strip()
+
+
 def get_llm_provider(force_offline: bool = False) -> BaseLLMProvider:
-    """Factory returning active LLM provider based on settings."""
-    if not force_offline and settings.is_live_llm_ready:
+    """Factory returning active LLM provider based on LLM_PROVIDER setting."""
+    if force_offline or not settings.is_live_llm_ready:
+        return DeterministicFallbackProvider()
+
+    provider_choice = settings.llm_provider
+
+    if provider_choice == "gemma":
+        return GemmaProvider()
+    elif provider_choice == "gemini":
         return GeminiProvider()
-    return DeterministicFallbackProvider()
+    else:
+        # Auto-detect: prefer Gemma if HF key exists, else Gemini
+        if settings.huggingface_api_key:
+            return GemmaProvider()
+        if settings.gemini_api_key:
+            return GeminiProvider()
+        return DeterministicFallbackProvider()
