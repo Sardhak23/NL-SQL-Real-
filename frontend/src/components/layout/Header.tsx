@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <Cpu className="h-3.5 w-3.5 text-zinc-400" />
           <span className="text-zinc-200 font-medium">
-            {isOnline ? 'Gemini 1.5 + SQLite' : 'Offline Mode'}
+            {isOnline ? 'Gemma 4B + SQLite' : 'Offline Mode'}
           </span>
           {lastLatencyMs !== undefined && (
             <>
