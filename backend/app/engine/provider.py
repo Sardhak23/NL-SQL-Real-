@@ -315,8 +315,9 @@ class DeterministicFallbackProvider(BaseLLMProvider):
         if not is_db_related:
             return "IRRELEVANT_QUESTION"
 
-        # General Intelligent Default (Top Categories by Revenue)
-        return "SELECT c.name AS category_name, ROUND(SUM(oi.total_price), 2) AS total_revenue FROM categories c JOIN products p ON c.category_id = p.category_id JOIN order_items oi ON p.product_id = oi.product_id JOIN orders o ON oi.order_id = o.order_id WHERE o.status = 'completed' GROUP BY c.category_id, c.name ORDER BY total_revenue DESC LIMIT 5;"
+        # If it reaches here, it has database keywords but doesn't match any specific offline rule.
+        # And since the live AI API is failing, we cannot answer it.
+        return "ERROR_HF_API: My connection to the HuggingFace AI is currently failing (or you haven't accepted the Gemma license). I tried to answer this in Offline Mode, but this specific question is not supported offline."
 
     def repair_sql(
         self,
