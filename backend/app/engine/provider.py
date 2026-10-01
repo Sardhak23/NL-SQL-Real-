@@ -385,6 +385,17 @@ class GeminiProvider(BaseLLMProvider):
         dialect: str = "sqlite",
         conversation_history: Optional[List[Dict[str, Any]]] = None
     ) -> str:
+        # Hard Gate: Prevent LLM from hallucinating fake queries for off-topic questions
+        q = question.lower().strip()
+        db_keywords = [
+            "customer", "order", "product", "revenue", "sales", "inventory",
+            "category", "supplier", "review", "price", "cost", "quantity",
+            "shipping", "payment", "profit", "discount", "stock", "purchase",
+            "trend", "monthly", "yearly", "loyalty", "tier", "refund", "total", "average"
+        ]
+        if not any(kw in q for kw in db_keywords):
+            return "IRRELEVANT_QUESTION"
+
         if not self._genai_client:
             return self.fallback.generate_sql(question, schema_context, dialect, conversation_history)
 
@@ -515,6 +526,17 @@ class GemmaProvider(BaseLLMProvider):
         dialect: str = "sqlite",
         conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
+        # Hard Gate: Prevent Gemma from hallucinating fake queries for off-topic questions
+        q = question.lower().strip()
+        db_keywords = [
+            "customer", "order", "product", "revenue", "sales", "inventory",
+            "category", "supplier", "review", "price", "cost", "quantity",
+            "shipping", "payment", "profit", "discount", "stock", "purchase",
+            "trend", "monthly", "yearly", "loyalty", "tier", "refund", "total", "average"
+        ]
+        if not any(kw in q for kw in db_keywords):
+            return "IRRELEVANT_QUESTION"
+
         if not self.api_key:
             return self.fallback.generate_sql(question, schema_context, dialect, conversation_history)
 
