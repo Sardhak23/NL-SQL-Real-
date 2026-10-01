@@ -23,7 +23,7 @@ import {
 
 const DEFAULT_STEPS: ExecutionStep[] = [
   { id: 'linking', name: 'Schema Linking', description: 'Semantic context retrieval', status: 'pending' },
-  { id: 'generation', name: 'SQL Generation', description: 'Gemini 1.5 LLM synthesis', status: 'pending' },
+  { id: 'generation', name: 'SQL Generation', description: 'Gemma 4B LLM synthesis', status: 'pending' },
   { id: 'safety', name: 'AST Safety Check', description: 'Strict read-only guardrail', status: 'pending' },
   { id: 'execution', name: 'DB Execution', description: 'SQLite query runner', status: 'pending' },
   { id: 'correction', name: 'Self-Correction', description: 'Error healing loop', status: 'pending' },
