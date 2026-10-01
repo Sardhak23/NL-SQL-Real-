@@ -99,6 +99,34 @@ class SelfCorrectionEngine:
                 error="This question is not related to the e-commerce database.",
                 error_type="irrelevant_question",
             )
+            
+        # Early exit: HuggingFace API Error
+        if current_sql.strip().startswith("ERROR_HF_"):
+            total_latency = round((time.perf_counter() - overall_start) * 1000.0, 2)
+            timings["total_latency_ms"] = total_latency
+            return ChatResponse(
+                success=False,
+                question=question,
+                session_id=session_id,
+                sql="",
+                columns=[],
+                rows=[],
+                row_count=0,
+                execution_time_ms=0.0,
+                pipeline_timings=timings,
+                explanation="I encountered an error connecting to the HuggingFace API.",
+                diagnostics=Diagnostics(
+                    attempts=0,
+                    is_live_ai=active_provider.is_live_ai,
+                    model_used=active_provider.provider_name,
+                    tables_linked=linked_tables,
+                    trace=[],
+                ),
+                correction_attempts=0,
+                correction_log=[],
+                error=current_sql.strip(),
+                error_type="api_error",
+            )
 
         sanitized_sql = current_sql
         exec_result: Optional[ExecutionResult] = None

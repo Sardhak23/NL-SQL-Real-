@@ -307,9 +307,8 @@ class DeterministicFallbackProvider(BaseLLMProvider):
         db_keywords = [
             "customer", "order", "product", "revenue", "sales", "inventory",
             "category", "supplier", "review", "price", "cost", "quantity",
-            "shipping", "payment", "date", "total", "count", "average", "top",
-            "list", "show", "find", "get", "how many", "which", "what",
-            "profit", "discount", "stock", "purchase", "trend", "monthly", "yearly"
+            "shipping", "payment", "profit", "discount", "stock", "purchase",
+            "trend", "monthly", "yearly", "loyalty", "tier", "refund"
         ]
         is_db_related = any(kw in q for kw in db_keywords)
 
@@ -481,27 +480,33 @@ class GemmaProvider(BaseLLMProvider):
 
     def _call_hf_api(self, prompt: str, max_new_tokens: int = 512) -> Optional[str]:
         """Call HuggingFace Inference API and return generated text."""
+        import urllib.request
+        import json as _json
+
+        url = f"{self.HF_API_BASE}/{self.model_name}/v1/chat/completions"
+        payload = _json.dumps({
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_new_tokens,
+            "temperature": settings.temperature,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            url, data=payload, headers=self._headers, method="POST"
+        )
         try:
-            import urllib.request
-            import json as _json
-
-            url = f"{self.HF_API_BASE}/{self.model_name}/v1/chat/completions"
-            payload = _json.dumps({
-                "model": self.model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_new_tokens,
-                "temperature": settings.temperature,
-            }).encode("utf-8")
-
-            req = urllib.request.Request(
-                url, data=payload, headers=self._headers, method="POST"
-            )
             with urllib.request.urlopen(req, timeout=30) as resp:
                 result = _json.loads(resp.read().decode("utf-8"))
                 return result["choices"][0]["message"]["content"].strip()
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            logger.error(f"HF API Error {e.code}: {error_body}")
+            if e.code == 403 or e.code == 401:
+                return f"ERROR_HF_AUTH: HuggingFace access denied. Did you accept the Gemma license on HuggingFace? Details: {error_body}"
+            return f"ERROR_HF_API: {e.code} - {error_body}"
         except Exception as e:
-            logger.warning(f"HuggingFace Gemma API call failed: {e}")
-            return None
+            logger.error(f"HuggingFace Gemma API call failed: {e}")
+            return f"ERROR_HF_API: {str(e)}"
 
     def generate_sql(
         self,
@@ -538,6 +543,11 @@ class GemmaProvider(BaseLLMProvider):
         prompt += f"Question: {question}"
 
         raw = self._call_hf_api(prompt)
+        
+        # If API returned our custom error string, bubble it up to trigger a visible error in self-correction
+        if raw and raw.startswith("ERROR_HF_"):
+            return raw
+
         if raw is None:
             logger.warning("Gemma API returned None — falling back to deterministic engine.")
             return self.fallback.generate_sql(question, schema_context, dialect, conversation_history)
