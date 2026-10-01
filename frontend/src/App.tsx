@@ -101,6 +101,42 @@ export const App: React.FC = () => {
   const handleExecuteQuery = useCallback(async (question: string) => {
     if (!question.trim() || isExecuting) return;
 
+    // ── Client-Side Relevance Gate ──────────────────────────────────────────
+    // Block irrelevant questions BEFORE sending to backend.
+    const DB_KEYWORDS = [
+      'customer', 'order', 'product', 'revenue', 'sales', 'inventory',
+      'category', 'supplier', 'review', 'price', 'cost', 'quantity',
+      'shipping', 'payment', 'profit', 'discount', 'stock', 'purchase',
+      'trend', 'monthly', 'yearly', 'loyalty', 'tier', 'refund',
+      'total', 'average', 'ecommerce', 'database', 'table', 'record',
+      'invoice', 'warehouse', 'analytics', 'report'
+    ];
+    const q = question.toLowerCase();
+    const isDbRelated = DB_KEYWORDS.some(kw => q.includes(kw));
+    if (!isDbRelated) {
+      setCurrentResponse({
+        success: false,
+        question,
+        sql: '',
+        columns: [],
+        rows: [],
+        row_count: 0,
+        execution_time_ms: 0,
+        explanation: "I'm an E-Commerce Analytics Copilot. I can only answer business questions about your database — such as customers, orders, products, revenue, and inventory. Please try: 'Top 5 products by revenue'.",
+        error: "Irrelevant question detected. Please ask about the e-commerce database.",
+        error_type: 'irrelevant_question',
+        correction_attempts: 0,
+        correction_log: [],
+        suggested_followups: [
+          'Top 5 products by revenue?',
+          'Total revenue by category in 2024?',
+          'How many customers signed up this year?',
+        ],
+      } as any);
+      return;
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     setIsExecuting(true);
     setCurrentPrompt(question);
 
